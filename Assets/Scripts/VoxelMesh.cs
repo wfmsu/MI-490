@@ -38,57 +38,54 @@ public class VoxelMesh : MonoBehaviour
 
         var vertices = new List<Vector3>();
         var triangles = new List<int>();
-        var uvs = new List<Vector2>();
+        var uvs = new List<Vector2>(); // TODO
         var normals = new List<Vector3>();
         var colors = new List<Color>();
         
         Debug.Log(_voxelObject.Root.GetLeafVoxels().Count());
+        var sides = new[] {
+            Vector3.up, Vector3.down, Vector3.left, Vector3.right, Vector3.forward, Vector3.back
+        };
         foreach (var leaf in _voxelObject.Root.GetLeafVoxels().Where(x => x.Type.Id != 0)) {
-            var initialIndex = vertices.Count;
-            
-            var c0 = new Vector3(leaf.Position.x - leaf.Size * 0.5f, leaf.Position.y - leaf.Size * 0.5f, leaf.Position.z + leaf.Size * 0.5f);
-            var c1 = new Vector3(leaf.Position.x + leaf.Size * 0.5f, leaf.Position.y - leaf.Size * 0.5f, leaf.Position.z + leaf.Size * 0.5f);
-            var c2 = new Vector3(leaf.Position.x - leaf.Size * 0.5f, leaf.Position.y + leaf.Size * 0.5f, leaf.Position.z + leaf.Size * 0.5f);
-            var c3 = new Vector3(leaf.Position.x + leaf.Size * 0.5f, leaf.Position.y + leaf.Size * 0.5f, leaf.Position.z + leaf.Size * 0.5f);
-            var c4 = new Vector3(leaf.Position.x - leaf.Size * 0.5f, leaf.Position.y - leaf.Size * 0.5f, leaf.Position.z - leaf.Size * 0.5f);
-            var c5 = new Vector3(leaf.Position.x + leaf.Size * 0.5f, leaf.Position.y - leaf.Size * 0.5f, leaf.Position.z - leaf.Size * 0.5f);
-            var c6 = new Vector3(leaf.Position.x - leaf.Size * 0.5f, leaf.Position.y + leaf.Size * 0.5f, leaf.Position.z - leaf.Size * 0.5f);
-            var c7 = new Vector3(leaf.Position.x + leaf.Size * 0.5f, leaf.Position.y + leaf.Size * 0.5f, leaf.Position.z - leaf.Size * 0.5f);
+            foreach (var side in sides) {
+                // TODO: Only visible sides
+                var vertexIndex = vertices.Count;
+                var orthogonalVec1 = Vector3.Cross(side, side + new Vector3(1, 1, 1)).normalized;
+                var orthogonalVec2 = Vector3.Cross(side, orthogonalVec1).normalized;
+                orthogonalVec1 *= leaf.Size * 0.5f;
+                orthogonalVec2 *= leaf.Size * 0.5f;
 
-            // Add the vertices for each face of the cube
-            vertices.AddRange(new[] { c0, c1, c2, c3, c4, c5, c6, c7 });
-            
-            // Add the triangles for each face of the cube
-            triangles.AddRange(new[] { 
-                //Top
-                initialIndex + 7, initialIndex + 6, initialIndex + 2,
-                initialIndex + 2, initialIndex + 3, initialIndex + 7,
+                var scale = Mathf.Sqrt(0.5f);
+                var center = leaf.Position + side * leaf.Size * 0.5f;
 
-                //Bottom
-                initialIndex + 0, initialIndex + 4, initialIndex + 5,
-                initialIndex + 5, initialIndex + 1, initialIndex + 0,
+                vertices.AddRange(new[] {
+                    center + (orthogonalVec1 + orthogonalVec2) * scale + (orthogonalVec1 - orthogonalVec2) * scale,
+                    center + (orthogonalVec1 - orthogonalVec2) * scale + (-orthogonalVec1 - orthogonalVec2) * scale,
+                    center + (-orthogonalVec1 - orthogonalVec2) * scale + (-orthogonalVec1 + orthogonalVec2) * scale,
+                    center + (-orthogonalVec1 + orthogonalVec2) * scale + (orthogonalVec1 + orthogonalVec2) * scale
+                });
 
-                //Left
-                initialIndex + 0, initialIndex + 2, initialIndex + 6,
-                initialIndex + 6, initialIndex + 4, initialIndex + 0,
-
-                //Right
-                initialIndex + 7, initialIndex + 3, initialIndex + 1,
-                initialIndex + 1, initialIndex + 5, initialIndex + 7,
-
-                //Front
-                initialIndex + 3, initialIndex + 2, initialIndex + 0,
-                initialIndex + 0, initialIndex + 1, initialIndex + 3,
-
-                //Back
-                initialIndex + 4, initialIndex + 6, initialIndex + 7,
-                initialIndex + 7, initialIndex + 5, initialIndex + 4
-            });
+                triangles.AddRange(new[] {
+                    vertexIndex + 0,
+                    vertexIndex + 3,
+                    vertexIndex + 2,
+                    vertexIndex + 2,
+                    vertexIndex + 1,
+                    vertexIndex + 0
+                });
+                
+                normals.AddRange(new[] {
+                    side,
+                    side,
+                    side,
+                    side
+                });
+            }
         }
 
         mesh.SetVertices(vertices);
         mesh.SetTriangles(triangles, 0);
-        mesh.RecalculateNormals();
+        mesh.SetNormals(normals);
         mesh.SetColors(colors);
 
         return mesh;
