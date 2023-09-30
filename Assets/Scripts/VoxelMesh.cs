@@ -87,6 +87,14 @@ public class VoxelMesh : MonoBehaviour
                     leaf.Type.Color,
                     leaf.Type.Color
                 });
+
+                var size = leaf.Size;
+                uvs.AddRange(new[] {
+                    new Vector2(0, 0),
+                    new Vector2(size, 0),
+                    new Vector2(size, size),
+                    new Vector2(0, size)
+                });
             }
         }
 
@@ -94,6 +102,7 @@ public class VoxelMesh : MonoBehaviour
         mesh.SetTriangles(triangles, 0);
         mesh.SetNormals(normals);
         mesh.SetColors(colors);
+        mesh.SetUVs(0, uvs);
 
         return mesh;
     }
