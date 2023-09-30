@@ -80,6 +80,13 @@ public class VoxelMesh : MonoBehaviour
                     side,
                     side
                 });
+                
+                colors.AddRange(new[] {
+                    leaf.Type.Color,
+                    leaf.Type.Color,
+                    leaf.Type.Color,
+                    leaf.Type.Color
+                });
             }
         }
 
