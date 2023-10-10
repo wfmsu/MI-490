@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using Unity.Collections;
 using Unity.Jobs;
 using UnityEngine;
 using UnityEngine.Rendering;
+using Debug = UnityEngine.Debug;
 
 [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer), typeof(VoxelObject))]
 public class VoxelMesh : MonoBehaviour
@@ -21,7 +23,16 @@ public class VoxelMesh : MonoBehaviour
     }
 
     private void OnVoxelsUpdated() {
-        var mesh = MultiCubeMeshing();//BasicCubeMeshing();
+        var stopwatch = new Stopwatch();
+        stopwatch.Start();
+        //var mesh = BasicCubeMeshing(); // Basic cube meshing (all faces of leaf nodes)
+        var mesh = JobBasicCubeMeshing(); // Basic cube meshing + job system
+        //var mesh = GPUBasicCubeMeshing(); // Basic cube meshing + gpu
+        //var mesh = CubeMeshing(); // Optimized cube meshing (visible faces + greedy meshing)
+        //var mesh = JobCubeMeshing(); // Optimized cube meshing + job system
+        //var mesh = GPUCubeMeshing(); // Optimized cube meshing + gpu
+        stopwatch.Stop();
+        Debug.Log("Mesh Time: " + stopwatch.ElapsedMilliseconds + "ms");
         if (mesh != null) {
             GetComponent<MeshFilter>().mesh = mesh;
         }
@@ -115,82 +126,85 @@ public class VoxelMesh : MonoBehaviour
         public byte Type;
         public Color Color;
     }
-    
-    
-    private struct CalculateMeshDataJob : IJob {
+
+    private struct CalculateMeshDataJob : IJobParallelFor {
+        [NativeDisableParallelForRestriction]
         public NativeArray<Vector3> vertices;
+        [NativeDisableParallelForRestriction]
         public NativeArray<int> triangles;
+        [NativeDisableParallelForRestriction]
         public NativeArray<Vector3> normals;
+        [NativeDisableParallelForRestriction]
         public NativeArray<Color> colors;
+        [NativeDisableParallelForRestriction]
         public NativeArray<Vector2> uvs;
+        [ReadOnly]
         public NativeArray<LeafVoxel> leafVoxels;
 
-        public void Execute() {
+        public void Execute(int i) {
             var sides = new[] {
                 Vector3.up, Vector3.down, Vector3.left, Vector3.right, Vector3.forward, Vector3.back
             };
-            
-            for (var i = 0; i < leafVoxels.Length; i++) {
-                var leaf = leafVoxels[i];
-                if (leaf.Type == VoxelType.Empty.Id) continue;
+            var leaf = leafVoxels[i];
+            if (leaf.Type == VoxelType.Empty.Id) 
+                return;
 
-                for (var j = 0; j < sides.Length; j++) {
-                    var side = sides[j];
-                    var vertexIndex = i * 24 + j * 4;
+            for (var j = 0; j < sides.Length; j++) {
+                var side = sides[j];
 
-                    var orthogonalVec1 = Vector3.Cross(side, side + new Vector3(1, 1, 1)).normalized;
-                    var orthogonalVec2 = Vector3.Cross(side, orthogonalVec1).normalized;
-                    orthogonalVec1 *= leaf.Size * 0.5f;
-                    orthogonalVec2 *= leaf.Size * 0.5f;
+                var orthogonalVec1 = Vector3.Cross(side, side + new Vector3(1, 1, 1)).normalized;
+                var orthogonalVec2 = Vector3.Cross(side, orthogonalVec1).normalized;
+                orthogonalVec1 *= leaf.Size * 0.5f;
+                orthogonalVec2 *= leaf.Size * 0.5f;
 
-                    var scale = Mathf.Sqrt(0.5f);
-                    var center = leaf.Position + side * leaf.Size * 0.5f;
+                var scale = Mathf.Sqrt(0.5f);
+                var center = leaf.Position + side * leaf.Size * 0.5f;
 
-                    vertices[vertexIndex + 0] = center + (orthogonalVec1 + orthogonalVec2) * scale + (orthogonalVec1 - orthogonalVec2) * scale;
-                    vertices[vertexIndex + 1] = center + (orthogonalVec1 - orthogonalVec2) * scale + (-orthogonalVec1 - orthogonalVec2) * scale;
-                    vertices[vertexIndex + 2] = center + (-orthogonalVec1 - orthogonalVec2) * scale + (-orthogonalVec1 + orthogonalVec2) * scale;
-                    vertices[vertexIndex + 3] = center + (-orthogonalVec1 + orthogonalVec2) * scale + (orthogonalVec1 + orthogonalVec2) * scale;
-                    
+                var vertexIndex = i * 4 * 6 + j * 4;
+                vertices[vertexIndex + 0] = center + (orthogonalVec1 + orthogonalVec2) * scale + (orthogonalVec1 - orthogonalVec2) * scale;
+                vertices[vertexIndex + 1] = center + (orthogonalVec1 - orthogonalVec2) * scale + (-orthogonalVec1 - orthogonalVec2) * scale;
+                vertices[vertexIndex + 2] = center + (-orthogonalVec1 - orthogonalVec2) * scale + (-orthogonalVec1 + orthogonalVec2) * scale;
+                vertices[vertexIndex + 3] = center + (-orthogonalVec1 + orthogonalVec2) * scale + (orthogonalVec1 + orthogonalVec2) * scale;
 
-                    triangles[vertexIndex + 0] = vertexIndex + 0;
-                    triangles[vertexIndex + 1] = vertexIndex + 3;
-                    triangles[vertexIndex + 2] = vertexIndex + 2;
-                    triangles[vertexIndex + 3] = vertexIndex + 2;
-                    triangles[vertexIndex + 4] = vertexIndex + 1;
-                    triangles[vertexIndex + 5] = vertexIndex + 0;
+                var triangleIndex = i * 6 * 6 + j * 6;
+                triangles[triangleIndex + 0] = vertexIndex + 0;
+                triangles[triangleIndex + 1] = vertexIndex + 3;
+                triangles[triangleIndex + 2] = vertexIndex + 2;
+                triangles[triangleIndex + 3] = vertexIndex + 2;
+                triangles[triangleIndex + 4] = vertexIndex + 1;
+                triangles[triangleIndex + 5] = vertexIndex + 0;
+                
+                normals[vertexIndex + 0] = side;
+                normals[vertexIndex + 1] = side;
+                normals[vertexIndex + 2] = side;
+                normals[vertexIndex + 3] = side;
 
-                    normals[vertexIndex + 0] = side;
-                    normals[vertexIndex + 1] = side;
-                    normals[vertexIndex + 2] = side;
-                    normals[vertexIndex + 3] = side;
+                colors[vertexIndex + 0] = leaf.Color;
+                colors[vertexIndex + 1] = leaf.Color;
+                colors[vertexIndex + 2] = leaf.Color;
+                colors[vertexIndex + 3] = leaf.Color;
 
-                    colors[vertexIndex + 0] = leaf.Color;
-                    colors[vertexIndex + 1] = leaf.Color;
-                    colors[vertexIndex + 2] = leaf.Color;
-                    colors[vertexIndex + 3] = leaf.Color;
-
-                    var size = leaf.Size;
-                    uvs[vertexIndex + 0] = new Vector2(0, 0);
-                    uvs[vertexIndex + 1] = new Vector2(size, 0);
-                    uvs[vertexIndex + 2] = new Vector2(size, size);
-                    uvs[vertexIndex + 3] = new Vector2(0, size);
-                }
+                var size = leaf.Size;
+                uvs[vertexIndex + 0] = new Vector2(0, 0);
+                uvs[vertexIndex + 1] = new Vector2(size, 0);
+                uvs[vertexIndex + 2] = new Vector2(size, size);
+                uvs[vertexIndex + 3] = new Vector2(0, size);
             }
         }
     }
     
-    private Mesh MultiCubeMeshing() {
+    private Mesh JobBasicCubeMeshing() {
         // Create arrays to hold the data that will be calculated in parallel
         var leafVoxels = _voxelObject.Root.GetLeafVoxels().ToList();
-        var leafCounts = leafVoxels.Count();
+        var leafCounts = leafVoxels.Count;
         
         var vertices = new NativeArray<Vector3>(leafCounts * 4 * 6, Allocator.TempJob);
-        var triangles = new NativeArray<int>(leafCounts * 2 * 6, Allocator.TempJob);
+        var triangles = new NativeArray<int>(leafCounts * 6 * 6, Allocator.TempJob);
         var normals = new NativeArray<Vector3>(leafCounts * 6 * 4, Allocator.TempJob);
         var colors = new NativeArray<Color>(leafCounts * 6 * 4, Allocator.TempJob);
         var uvs = new NativeArray<Vector2>(leafCounts * 6 * 4, Allocator.TempJob);
         var leaves = new NativeArray<LeafVoxel>(leafCounts, Allocator.TempJob);
-        for (var i = 0; i < leafVoxels.Count; i++) {
+        for (var i = 0; i < leafCounts; i++) {
             leaves[i] = new LeafVoxel {
                 Position = leafVoxels[i].Position,
                 Size = leafVoxels[i].Size,
@@ -210,7 +224,7 @@ public class VoxelMesh : MonoBehaviour
         };
 
         // Schedule the job and wait for it to complete
-        job.Schedule().Complete();
+        job.Schedule(leafCounts, 1).Complete();
 
         // Create the mesh using the calculated data
         var mesh = new Mesh {
