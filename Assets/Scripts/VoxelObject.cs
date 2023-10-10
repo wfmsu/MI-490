@@ -137,27 +137,6 @@ public class VoxelObject : MonoBehaviour
             if (Type.Id > 1) {
                 yield return this;
             }
-
-
-            //var children = GetChildren();
-            //var hasChildren = Type.Id != VoxelType.Full.Id;
-//
-            //maxDepth = maxDepth == -1 ? _source._depth : maxDepth;
-//
-            //if (Depth == maxDepth || !hasChildren) {
-            //    yield return this;
-            //}
-//
-            //foreach (var node in children) {
-            //    if (node == null || !hasChildren) {
-            //        continue;
-            //    }
-            //    foreach (var leaf in node.GetLeafVoxels()) {
-            //        if (leaf != null) {
-            //            yield return leaf;
-            //        }
-            //    }
-            //}
         }
     }
 
@@ -173,8 +152,9 @@ public class VoxelObject : MonoBehaviour
 
     
     
+
     // TODO: Debug below
-    private void InsertSphere(Voxel voxel, Vector3 position, float radius, byte voxelType) {
+    private void InsertSDF(Voxel voxel, byte voxelType, Func<Voxel, float> sdf) {
         // Set all max-depth nodes that are inside the sphere
         if (voxel.Height == 0) {
             voxel.Type = VoxelType.Types[voxelType];
@@ -186,8 +166,8 @@ public class VoxelObject : MonoBehaviour
         byte? first = null;
         foreach (var child in voxel.GetChildren()) {
             // If the child node is contained in the sphere, populate it
-            if (ContainedInSphere(child, position, radius))
-                InsertSphere(child, position, radius, voxelType);
+            if (sdf(child) < child.Size)
+                InsertSDF(child, voxelType, sdf);
             
             // If this is the first child, use its type for the check
             if (first == null)
@@ -212,14 +192,6 @@ public class VoxelObject : MonoBehaviour
             child.Type = VoxelType.Empty;
         }
     }
-    
-    private static bool ContainedInSphere(Voxel voxel, Vector3 position, float radius) {
-        var difference = voxel.Position - position;
-        difference.x = Mathf.Max(0, Mathf.Abs(difference.x) - voxel.Size / 2);
-        difference.y = Mathf.Max(0, Mathf.Abs(difference.y) - voxel.Size / 2);
-        difference.z = Mathf.Max(0, Mathf.Abs(difference.z) - voxel.Size / 2);
-        return difference.magnitude < radius && voxel.Position.y < 0; // TODO: Temp for semi-sphere
-    }
 
     private void DebugInit() {
         _voxelSize = 1f;
@@ -227,8 +199,23 @@ public class VoxelObject : MonoBehaviour
         var voxelCount = (int)Math.Pow(8, _depth + 1) / 7;
         Debug.Log("Created: " + voxelCount);
         _voxels = new byte[voxelCount];
+
+        var scale = _voxelSize * (int)Math.Pow(2, _depth - 1);
+        var center = Vector3.zero + scale * 0.5f * Vector3.up;
+        InsertSDF(Root, VoxelType.White.Id, voxel => {
+            return (voxel.Position - center).magnitude - scale / 2;
+        });
+        center = Vector3.zero + scale * 0.5f * Vector3.down;
+        InsertSDF(Root, VoxelType.Black.Id, voxel => {
+            return (voxel.Position - center).magnitude - scale / 2;
+        });
+        center = Vector3.zero;
+        scale *= 1.25f;
+        InsertSDF(Root, VoxelType.Red.Id, voxel => {
+            return (voxel.Position - center).magnitude - scale / 2;
+        });
         
-        InsertSphere(Root, Vector3.zero, _voxelSize * (int)Math.Pow(2, _depth - 1), VoxelType.DebugWhite.Id); // This is only going to depth-1 (last children are empty?)
+        
         Updated?.Invoke();
     }
     
