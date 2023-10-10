@@ -160,7 +160,7 @@ public class VoxelObject : MonoBehaviour
             voxel.Type = VoxelType.Types[voxelType];
             return;
         }
-        
+
         // Subdivide
         var allSame = true;
         byte? first = null;

@@ -25,14 +25,18 @@ public class VoxelMesh : MonoBehaviour
     private void OnVoxelsUpdated() {
         var stopwatch = new Stopwatch();
         stopwatch.Start();
-        //var mesh = BasicCubeMeshing(); // Basic cube meshing (all faces of leaf nodes)
-        var mesh = JobBasicCubeMeshing(); // Basic cube meshing + job system
+        var mesh = BasicCubeMeshing(); // Basic cube meshing (all faces of leaf nodes)
+        stopwatch.Stop();
+        Debug.Log("Basic Mesh Time: " + stopwatch.ElapsedMilliseconds + "ms");
+        stopwatch.Reset();
+        stopwatch.Start();
+        mesh = JobBasicCubeMeshing(); // Basic cube meshing + job system
+        stopwatch.Stop();
+        Debug.Log("Job System Mesh Time: " + stopwatch.ElapsedMilliseconds + "ms");
         //var mesh = GPUBasicCubeMeshing(); // Basic cube meshing + gpu
         //var mesh = CubeMeshing(); // Optimized cube meshing (visible faces + greedy meshing)
         //var mesh = JobCubeMeshing(); // Optimized cube meshing + job system
         //var mesh = GPUCubeMeshing(); // Optimized cube meshing + gpu
-        stopwatch.Stop();
-        Debug.Log("Mesh Time: " + stopwatch.ElapsedMilliseconds + "ms");
         if (mesh != null) {
             GetComponent<MeshFilter>().mesh = mesh;
         }
@@ -225,18 +229,24 @@ public class VoxelMesh : MonoBehaviour
 
         // Schedule the job and wait for it to complete
         job.Schedule(leafCounts, 1).Complete();
-
+        leaves.Dispose();
+        
         // Create the mesh using the calculated data
         var mesh = new Mesh {
             name = "Voxel Mesh",
             indexFormat = IndexFormat.UInt32
         };
+        
         mesh.SetVertices(vertices.ToList());
+        vertices.Dispose();
         mesh.SetTriangles(triangles.ToList(), 0);
+        triangles.Dispose();
         mesh.SetNormals(normals.ToList());
+        normals.Dispose();
         mesh.SetColors(colors.ToList());
+        colors.Dispose();
         mesh.SetUVs(0, uvs.ToList());
-
+        uvs.Dispose();
         return mesh;
     }
     
