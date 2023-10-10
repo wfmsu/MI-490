@@ -159,6 +159,11 @@ public class VoxelObject : MonoBehaviour
         if (voxel.Height == 0) {
             voxel.Type = VoxelType.Types[voxelType];
             return;
+        } 
+        if (voxel.Type != VoxelType.Full) {
+            foreach (var child in voxel.GetChildren()) {
+                child.Type = voxel.Type;
+            }
         }
 
         // Subdivide
@@ -186,6 +191,7 @@ public class VoxelObject : MonoBehaviour
             voxel.Type = VoxelType.Full; // Since I'm not using nulls, I'm using 0s
             return;
         }
+
         // If all children nodes are the same type, copy that type to the parent and set all child nodes to empty
         voxel.Type = VoxelType.Types[(int)first!];
         foreach (var child in voxel.GetChildren()) {
