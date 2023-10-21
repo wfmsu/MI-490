@@ -1,0 +1,67 @@
+#pragma kernel VoxelMesh
+
+struct LeafVoxel {
+    float3 Position;
+    float Size;
+    int Type;
+    float4 Color;
+};
+
+struct VoxelType {
+    int Empty;
+};
+
+RWStructuredBuffer<float3> vertices;
+RWStructuredBuffer<int> triangles;
+RWStructuredBuffer<float3> normals;
+RWStructuredBuffer<float4> colors;
+RWStructuredBuffer<float2> uvs;
+StructuredBuffer<LeafVoxel> leafVoxels;
+
+[numthreads(1, 1, 1)]
+void VoxelMesh(uint3 id : SV_DispatchThreadID) {
+    float3 sides[6] = {float3(0,1,0), float3(0,-1,0), float3(-1,0,0), float3(1,0,0), float3(0,0,1), float3(0,0,-1)};
+    LeafVoxel leaf = leafVoxels[id.x];
+
+    for (int j = 0; j < 6; j++) {
+        float3 side = sides[j];
+
+        float3 orthogonalVec1 = normalize(cross(side, side + float3(1, 1, 1)));
+        float3 orthogonalVec2 = normalize(cross(side, orthogonalVec1));
+        orthogonalVec1 *= leaf.Size * 0.5f;
+        orthogonalVec2 *= leaf.Size * 0.5f;
+
+        float scale = sqrt(0.5f);
+        float3 center = leaf.Position + side * leaf.Size * 0.5f;
+
+        uint vertexIndex = id.x * 24 + j * 4;
+        vertices[vertexIndex + 0] = center + (orthogonalVec1 + orthogonalVec2) * scale + (orthogonalVec1 - orthogonalVec2) * scale;
+        vertices[vertexIndex + 1] = center + (orthogonalVec1 - orthogonalVec2) * scale + (-orthogonalVec1 - orthogonalVec2) * scale;
+        vertices[vertexIndex + 2] = center + (-orthogonalVec1 - orthogonalVec2) * scale + (-orthogonalVec1 + orthogonalVec2) * scale;
+        vertices[vertexIndex + 3] = center + (-orthogonalVec1 + orthogonalVec2) * scale + (orthogonalVec1 + orthogonalVec2) * scale;
+
+        uint triangleIndex = id.x * 36 + j * 6;
+        triangles[triangleIndex + 0] = vertexIndex + 0;
+        triangles[triangleIndex + 1] = vertexIndex + 3;
+        triangles[triangleIndex + 2] = vertexIndex + 2;
+        triangles[triangleIndex + 3] = vertexIndex + 2;
+        triangles[triangleIndex + 4] = vertexIndex + 1;
+        triangles[triangleIndex + 5] = vertexIndex + 0;
+        
+        normals[vertexIndex + 0] = side;
+        normals[vertexIndex + 1] = side;
+        normals[vertexIndex + 2] = side;
+        normals[vertexIndex + 3] = side;
+
+        colors[vertexIndex + 0] = leaf.Color;
+        colors[vertexIndex + 1] = leaf.Color;
+        colors[vertexIndex + 2] = leaf.Color;
+        colors[vertexIndex + 3] = leaf.Color;
+
+        float size = leaf.Size;
+        uvs[vertexIndex + 0] = float2(0, 0);
+        uvs[vertexIndex + 1] = float2(size, 0);
+        uvs[vertexIndex + 2] = float2(size, size);
+        uvs[vertexIndex + 3] = float2(0, size);
+    }
+}

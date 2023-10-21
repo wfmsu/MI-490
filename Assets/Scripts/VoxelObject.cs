@@ -216,9 +216,12 @@ public class VoxelObject : MonoBehaviour
             return (voxel.Position - center).magnitude - scale / 2;
         });
         center = Vector3.zero;
-        scale *= 1.25f;
+        scale *= 0.35f;
+        var size = Vector3.one * scale;
         InsertSDF(Root, VoxelType.Red.Id, voxel => {
-            return (voxel.Position - center).magnitude - scale / 2;
+            var p = voxel.Position;
+            var d = new Vector3(Mathf.Abs(p.x), Mathf.Abs(p.y), Mathf.Abs(p.z)) - size;
+            return Mathf.Min(Mathf.Max(d.x, d.y, d.z), 0.0f) + Vector3.Max(d, new Vector3(0.0f, 0.0f, 0.0f)).magnitude;
         });
         
         

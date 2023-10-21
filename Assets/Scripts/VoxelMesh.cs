@@ -33,10 +33,11 @@ public class VoxelMesh : MonoBehaviour
         mesh = JobBasicCubeMeshing(); // Basic cube meshing + job system
         stopwatch.Stop();
         Debug.Log("Job System Mesh Time: " + stopwatch.ElapsedMilliseconds + "ms");
-        //var mesh = GPUBasicCubeMeshing(); // Basic cube meshing + gpu
-        //var mesh = CubeMeshing(); // Optimized cube meshing (visible faces + greedy meshing)
-        //var mesh = JobCubeMeshing(); // Optimized cube meshing + job system
-        //var mesh = GPUCubeMeshing(); // Optimized cube meshing + gpu
+        stopwatch.Reset();
+        stopwatch.Start();
+        mesh = ComputeShaderCubeMeshing(); // Basic cube meshing + gpu
+        stopwatch.Stop();
+        Debug.Log("Compute Shader Mesh Time: " + stopwatch.ElapsedMilliseconds + "ms");
         if (mesh != null) {
             GetComponent<MeshFilter>().mesh = mesh;
         }
@@ -250,4 +251,78 @@ public class VoxelMesh : MonoBehaviour
         return mesh;
     }
     
+    private Mesh ComputeShaderCubeMeshing() {
+        // Create arrays to hold the data that will be calculated in parallel
+        var leafVoxels = _voxelObject.Root.GetLeafVoxels().Where(x => x.Type.Id != 0).ToList();
+        var leafCounts = leafVoxels.Count;
+
+        var vertices = new ComputeBuffer(leafCounts * 4 * 6, sizeof(float) * 3);
+        var triangles = new ComputeBuffer(leafCounts * 6 * 6, sizeof(int));
+        var normals = new ComputeBuffer(leafCounts * 6 * 4, sizeof(float) * 3);
+        var colors = new ComputeBuffer(leafCounts * 6 * 4, sizeof(float) * 4);
+        var uvs = new ComputeBuffer(leafCounts * 6 * 4, sizeof(float) * 2);
+        var leaves = new ComputeBuffer(leafCounts, sizeof(float) * 3 + sizeof(float) + sizeof(int) + sizeof(float) * 4);
+
+        // Fill the leaves buffer with data
+        var leafArray = new LeafVoxel[leafCounts];
+        for (var i = 0; i < leafCounts; i++) {
+            leafArray[i] = new LeafVoxel {
+                Position = leafVoxels[i].Position,
+                Size = leafVoxels[i].Size,
+                Type = leafVoxels[i].Type.Id,
+                Color = leafVoxels[i].Type.Color
+            };
+        }
+        leaves.SetData(leafArray);
+
+        // Get the compute shader and set the buffers
+        var shader = Resources.Load<ComputeShader>("VoxelMesh");
+        shader.SetBuffer(0, "vertices", vertices);
+        shader.SetBuffer(0, "triangles", triangles);
+        shader.SetBuffer(0, "normals", normals);
+        shader.SetBuffer(0, "colors", colors);
+        shader.SetBuffer(0, "uvs", uvs);
+        shader.SetBuffer(0, "leafVoxels", leaves);
+
+        // Dispatch the compute shader
+        shader.Dispatch(0, leafCounts, 1, 1);
+
+        // Create the mesh using the calculated data
+        var mesh = new Mesh {
+            name = "Voxel Mesh",
+            indexFormat = IndexFormat.UInt32
+        };
+
+        // Get the data from the buffers
+        var vertexArray = new Vector3[vertices.count];
+        vertices.GetData(vertexArray);
+        mesh.SetVertices(vertexArray.ToList());
+
+        var triangleArray = new int[triangles.count];
+        triangles.GetData(triangleArray);
+        mesh.SetTriangles(triangleArray.ToList(), 0);
+
+        var normalArray = new Vector3[normals.count];
+        normals.GetData(normalArray);
+        mesh.SetNormals(normalArray.ToList());
+
+        var colorArray = new Color[colors.count];
+        colors.GetData(colorArray);
+        mesh.SetColors(colorArray.ToList());
+
+        var uvArray = new Vector2[uvs.count];
+        uvs.GetData(uvArray);
+        mesh.SetUVs(0, uvArray.ToList());
+
+        // Release the buffers
+        vertices.Release();
+        triangles.Release();
+        normals.Release();
+        colors.Release();
+        uvs.Release();
+        leaves.Release();
+
+        return mesh;
+    }
 }
+
