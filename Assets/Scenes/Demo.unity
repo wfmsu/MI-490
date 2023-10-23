@@ -232,6 +232,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: eb5ba2ed7eff2a24c8d14da950059127, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  voxelizeMesh: {fileID: 4300000, guid: 28bb535825fb76449ad3276c61644e2f, type: 2}
+  voxelSize: 0.05
+  depth: 7
   showDebug: 0
 --- !u!1 &1587129749
 GameObject:

@@ -2,11 +2,19 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using Random = UnityEngine.Random;
 
 public class VoxelObject : MonoBehaviour
 {
-    private float _voxelSize;
-    private byte _depth;
+    [SerializeField]
+    private Mesh voxelizeMesh;
+    [SerializeField]
+    private float voxelSize;
+    [SerializeField]
+    private byte depth;
+    
+    
+    private VoxelObject _voxelObject;
     private byte[] _voxels; // Sparse voxel octree where 0 is empty.
 
     [SerializeField] private bool showDebug;
@@ -53,12 +61,12 @@ public class VoxelObject : MonoBehaviour
         /// <summary>
         /// Gets the height of this voxel.
         /// </summary>
-        public int Height => _source._depth - Depth;
+        public int Height => _source.depth - Depth;
         
         /// <summary>
         /// Gets the size of this voxel.
         /// </summary>
-        public float Size => _source._voxelSize * (int)Math.Pow(2, Height);
+        public float Size => _source.voxelSize * (int)Math.Pow(2, Height);
         
         /// <summary>
         /// Gets the child voxel at the specified index.
@@ -95,7 +103,7 @@ public class VoxelObject : MonoBehaviour
             get {
                 float x = 0, y = 0, z = 0;
                 var layerIndex = MortonEncode();
-                var voxelSize = _source._voxelSize;
+                var voxelSize = _source.voxelSize;
                 voxelSize /= (float)Math.Pow(2, 1 - Height);
                 for (var i = Depth; i > 0; i--) {
                     var bx = (byte)(layerIndex & 0b001);
@@ -171,8 +179,10 @@ public class VoxelObject : MonoBehaviour
         byte? first = null;
         foreach (var child in voxel.GetChildren()) {
             // If the child node is contained in the sphere, populate it
-            if (sdf(child) < child.Size)
+            if (sdf(child) < child.Size) {
                 InsertSDF(child, voxelType, sdf);
+            }
+                
             
             // If this is the first child, use its type for the check
             if (first == null)
@@ -200,13 +210,13 @@ public class VoxelObject : MonoBehaviour
     }
 
     private void DebugInit() {
-        _voxelSize = 1f;
-        _depth = 6;
-        var voxelCount = (int)Math.Pow(8, _depth + 1) / 7;
+        voxelSize = 1f;
+        depth = 6;
+        var voxelCount = (int)Math.Pow(8, depth + 1) / 7;
         Debug.Log("Created: " + voxelCount);
         _voxels = new byte[voxelCount];
 
-        var scale = _voxelSize * (int)Math.Pow(2, _depth - 1);
+        var scale = voxelSize * (int)Math.Pow(2, depth - 1);
         var center = Vector3.zero + scale * 0.5f * Vector3.up;
         InsertSDF(Root, VoxelType.White.Id, voxel => {
             return (voxel.Position - center).magnitude - scale / 2;
@@ -227,24 +237,64 @@ public class VoxelObject : MonoBehaviour
         
         Updated?.Invoke();
     }
-    
-    
-    
-    // TODO: Replace with some sort of model voxelizer
-    private void Awake() {
-        DebugInit();
+
+    private bool IsPointInsideCollider(Vector3 position, MeshCollider collider) {
+        Physics.queriesHitBackfaces = true;
+        Vector3 epsilon = new Vector3(0.001f, 0.001f, 0.001f);
+        Vector3 direction = Vector3.Normalize(Random.insideUnitSphere + epsilon);
+        int intersections = 0;
+        bool exit = false;
+        while (!exit) {
+            exit = true;
+            RaycastHit[] hits = Physics.RaycastAll(position, direction);
+            for (int i = 0; i < hits.Length; i++) {
+                if (hits[i].collider == collider) {
+                    position = hits[i].point + direction * 0.001f;
+                    intersections++;
+                    exit = false;
+                    break;
+                }
+            }
+        }
+        Physics.queriesHitBackfaces = false;
+        return intersections % 2 == 1;
     }
-    /*private void OnValidate() {
-        if (_voxels == null || _voxels.Length == 0) {
+
+    private void DebugVoxelizeInit() {
+        var meshCollider = gameObject.AddComponent<MeshCollider>();
+        meshCollider.sharedMesh = voxelizeMesh;
+        
+        var voxelCount = (int)Math.Pow(8, depth + 1) / 7;
+        Debug.Log("Created: " + voxelCount);
+        _voxels = new byte[voxelCount];
+        
+        InsertSDF(Root, VoxelType.White.Id, voxel => {
+            if (IsPointInsideCollider(voxel.Position, meshCollider)) {
+                return -1;
+            }
+            return voxelSize * 2;
+        });
+
+        Destroy(meshCollider);
+        Updated?.Invoke();
+    }
+    
+    
+    private void Awake() {
+        if (voxelizeMesh == null) {
             DebugInit();
         }
-    }*/
+        else {
+            DebugVoxelizeInit();
+        }
+        
+    }
 
     private void OnDrawGizmos() {
         if (!showDebug || _voxels == null || _voxels.Length == 0) {
             return;
         }
-        DrawVoxelDebug(Root, _depth);
+        DrawVoxelDebug(Root, depth);
     }
     
     private readonly Color _minColor = new(1, 1, 1, 1f);
@@ -260,7 +310,7 @@ public class VoxelObject : MonoBehaviour
                 DrawVoxelDebug(child, maxDepth);
             }
         }
-        Gizmos.color = Color.Lerp(_minColor, _maxColor, voxel.Depth / (float)_depth);
+        Gizmos.color = Color.Lerp(_minColor, _maxColor, voxel.Depth / (float)depth);
         Gizmos.DrawWireCube(transform.position + voxel.Position, new Vector3(voxel.Size, voxel.Size, voxel.Size));
     }
 }
